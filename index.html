@@ -384,7 +384,12 @@ async function send(question) {
 // ============================================
 function initSpeech() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { micBtn.style.display = 'none'; return; }
+  if (!SR) {
+    // iOS Safari 不支持网页语音识别，改成提示用键盘麦克风
+    micBtn.style.opacity = '0.5';
+    micBtn.title = 'iOS 请用键盘自带话筒';
+    return;
+  }
 
   recognition = new SR();
   recognition.lang = 'zh-CN';
@@ -450,24 +455,29 @@ async function saveSettings() {
   statusMsg.textContent = '';
   statusMsg.className = 'status-msg';
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
   try {
     // 测试 API Key
     if (currentModel === 'gemini-2.5-flash') {
       const resp = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }) }
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }),
+          signal: controller.signal }
       );
       if (!resp.ok) {
         const e = await resp.json().catch(() => ({}));
-        throw new Error(e?.error?.message || 'Key 无效');
+        throw new Error(e?.error?.message || 'Key 无效（状态码 ' + resp.status + '）');
       }
       localStorage.setItem('va_gemini_key', geminiKey);
     } else {
       const resp = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
-        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }] })
+        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }] }),
+        signal: controller.signal
       });
       if (!resp.ok) throw new Error('DeepSeek Key 无效');
       localStorage.setItem('va_deepseek_key', deepseekKey);
@@ -481,9 +491,11 @@ async function saveSettings() {
     statusMsg.className = 'status-msg ok';
     saveBtn.textContent = '✅ 已保存';
 
+    clearTimeout(timeoutId);
     setTimeout(() => { closeSettings(); initCamera(); saveBtn.disabled = false; saveBtn.textContent = '保存并连接'; }, 1200);
   } catch (err) {
-    statusMsg.textContent = '❌ ' + err.message;
+    clearTimeout(timeoutId);
+    statusMsg.textContent = '❌ ' + (err.name === 'AbortError' ? '连接超时，请检查网络或重新申请Key' : err.message);
     statusMsg.className = 'status-msg err';
     saveBtn.disabled = false;
     saveBtn.textContent = '保存并连接';
@@ -540,6 +552,11 @@ async function init() {
   initSpeech();
   await initCamera();
 
+  // iOS 提示用键盘语音
+  if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+    hint.textContent = '🎤 点击输入框→键盘话筒说话';
+  }
+
   settingsBtn.addEventListener('click', openSettings);
   saveBtn.addEventListener('click', saveSettings);
 
@@ -557,18 +574,25 @@ async function init() {
   });
 
   micBtn.addEventListener('click', () => {
-    if (recognition && !isRecording) { try { recognition.start(); } catch (e) {} }
+    if (!recognition) {
+      // iOS Safari 不支持语音识别，改为弹出键盘
+      qInput.focus();
+      return;
+    }
+    if (!isRecording) { try { recognition.start(); } catch (e) {} }
   });
 
-  let pressTimer;
-  micBtn.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    pressTimer = setTimeout(() => { if (recognition) { try { recognition.start(); } catch (err) {} } }, 250);
-  });
-  micBtn.addEventListener('touchend', () => {
-    clearTimeout(pressTimer);
-    if (isRecording && recognition) recognition.stop();
-  });
+  if (recognition) {
+    let pressTimer;
+    micBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      pressTimer = setTimeout(() => { if (recognition) { try { recognition.start(); } catch (err) {} } }, 250);
+    });
+    micBtn.addEventListener('touchend', () => {
+      clearTimeout(pressTimer);
+      if (isRecording && recognition) recognition.stop();
+    });
+  }
 }
 
 if (document.readyState === 'loading') {
