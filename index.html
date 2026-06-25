@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Vision AI" />
+  <title>Vision AI</title>
+  <style>
+    :root {
+      --primary: #007AFF;
+      --bg: #000;
+      --surface: #1a1a1a;
+      --surface2: #2a2a2a;
+      --text: #fff;
+      --text-dim: #888;
+      --danger: #ff3b30;
+      --success: #34C759;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+
+    /* 启动页 */
+    #splash { position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 999; transition: opacity 0.6s ease; }
+    #splash.fade-out { opacity: 0; pointer-events: none; }
+    .splash-content { text-align: center; animation: slideUp 0.8s ease-out; }
+    .splash-icon { font-size: 80px; margin-bottom: 20px; animation: breathe 2.5s infinite ease-in-out; }
+    .splash-content h1 { font-size: 38px; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, #fff 0%, var(--primary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .splash-content p { color: var(--text-dim); font-size: 16px; margin-bottom: 40px; }
+    .splash-dots { display: flex; gap: 8px; justify-content: center; }
+    .splash-dots span { width: 10px; height: 10px; background: var(--primary); border-radius: 50%; animation: dotPulse 1.4s infinite ease-in-out both; }
+    .splash-dots span:nth-child(1) { animation-delay: 0s; }
+    .splash-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .splash-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes breathe { 0%,100%{transform:scale(1)}50%{transform:scale(1.08)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)} }
+    @keyframes dotPulse { 0%,80%,100%{transform:scale(0.6);opacity:0.5}40%{transform:scale(1);opacity:1} }
+
+    /* 主界面 */
+    #app { display: none; flex-direction: column; height: 100dvh; }
+    #app.active { display: flex; }
+
+    /* 摄像头区域 */
+    .camera-wrap { position: relative; flex: 1; min-height: 45vh; background: #111; overflow: hidden; }
+    #video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #canvas { display: none; }
+    .camera-header { position: absolute; top: 0; left: 0; right: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top)); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%); }
+    .top-btn { width: 44px; height: 44px; background: rgba(0,0,0,0.5); border: none; border-radius: 50%; font-size: 18px; cursor: pointer; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; transition: transform 0.15s, background 0.15s; }
+    .top-btn:active { transform: scale(0.9); background: rgba(0,0,0,0.7); }
+    .cam-status { font-size: 12px; padding: 6px 14px; background: rgba(0,0,0,0.5); border-radius: 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #fff; user-select: none; }
+    .cam-status.live { background: rgba(52,199,89,0.75); }
+    .cam-status.error { background: rgba(255,59,48,0.75); }
+    .camera-hint { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 13px; padding: 8px 20px; background: rgba(0,0,0,0.6); border-radius: 20px; color: rgba(255,255,255,0.9); white-space: nowrap; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); user-select: none; }
+
+    /* 对话区域 */
+    .chat-area { flex-shrink: 0; display: flex; flex-direction: column; max-height: 55vh; background: var(--surface); border-radius: 20px 20px 0 0; box-shadow: 0 -4px 30px rgba(0,0,0,0.4); }
+    .chat-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px 10px; font-size: 14px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+    .clear-btn { background: none; border: none; color: var(--text-dim); font-size: 13px; cursor: pointer; padding: 4px 8px; }
+    .clear-btn:active { color: var(--danger); }
+    .messages { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+    .message { padding: 10px 14px; border-radius: 16px; font-size: 15px; line-height: 1.5; max-width: 85%; word-break: break-word; }
+    .message.user { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .message.ai { background: var(--surface2); color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; }
+    .message.system { background: transparent; color: var(--text-dim); font-size: 13px; text-align: center; align-self: center; padding: 4px 0; }
+    .message.error { background: rgba(255,59,48,0.15); color: #ff6b6b; border: 1px solid rgba(255,59,48,0.3); align-self: center; text-align: center; }
+    .thinking { display: flex; gap: 5px; padding: 10px 14px; background: var(--surface2); border-radius: 16px; border-bottom-left-radius: 4px; align-self: flex-start; max-width: 70px; }
+    .thinking span { width: 7px; height: 7px; background: var(--text-dim); border-radius: 50%; animation: dotPulse 1.2s infinite ease-in-out; }
+    .thinking span:nth-child(2) { animation-delay: 0.2s; }
+    .thinking span:nth-child(3) { animation-delay: 0.4s; }
+
+    /* 输入区域 */
+    .input-area { flex-shrink: 0; display: flex; gap: 10px; padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid rgba(255,255,255,0.06); align-items: flex-end; }
+    #questionInput { flex: 1; background: var(--surface2); border: none; border-radius: 22px; padding: 12px 18px; color: var(--text); font-size: 16px; resize: none; max-height: 120px; outline: none; line-height: 1.4; }
+    #questionInput::placeholder { color: var(--text-dim); }
+    .icon-btn { width: 46px; height: 46px; border-radius: 50%; border: none; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.15s, opacity 0.15s; flex-shrink: 0; }
+    .icon-btn:active { transform: scale(0.9); }
+    #micBtn { background: var(--surface2); color: var(--text); }
+    #micBtn.recording { background: var(--danger); color: #fff; animation: breathe 1s infinite; }
+    #sendBtn { background: var(--primary); color: #fff; }
+
+    /* 设置页面 */
+    #settingsPage { position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); z-index: 1000; display: none; flex-direction: column; justify-content: flex-end; border-radius: 20px 20px 0 0; transform: translateY(100%); transition: transform 0.35s cubic-bezier(0.32,0.72,0,1); }
+    #settingsPage.show { display: flex; transform: translateY(0); }
+    .settings-sheet { background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px; max-height: 88vh; overflow-y: auto; }
+    .settings-handle { width: 40px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin: 0 auto 16px; }
+    .settings-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; text-align: center; }
+    .model-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .model-tab { flex: 1; padding: 12px; border-radius: 12px; border: 2px solid var(--surface2); background: var(--surface2); text-align: center; cursor: pointer; transition: all 0.2s; font-size: 14px; font-weight: 600; }
+    .model-tab.active { border-color: var(--primary); background: rgba(0,122,255,0.15); color: var(--primary); }
+    .key-field { margin-bottom: 14px; }
+    .key-field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+    .key-field input { width: 100%; background: var(--surface2); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 15px; outline: none; }
+    .key-field input:focus { border-color: var(--primary); }
+    .key-field.hidden { display: none; }
+    .camera-field { margin-bottom: 16px; }
+    .camera-field label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+    .camera-field select { width: 100%; background: var(--surface2); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px 14px; color: var(--text); font-size: 15px; outline: none; }
+    .save-btn { width: 100%; background: var(--primary); color: #fff; border: none; border-radius: 14px; padding: 16px; font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 8px; transition: opacity 0.2s; }
+    .save-btn:active { opacity: 0.7; }
+    .status-msg { text-align: center; font-size: 14px; margin-top: 10px; padding: 8px; border-radius: 8px; }
+    .status-msg.ok { color: var(--success); background: rgba(52,199,89,0.1); }
+    .status-msg.err { color: var(--danger); background: rgba(255,59,48,0.1); }
+  </style>
+</head>
+<body>
+
+<!-- 启动页 -->
+<div id="splash">
+  <div class="splash-content">
+    <div class="splash-icon">📷</div>
+    <h1>Vision AI</h1>
+    <p>摄像头实时对话</p>
+    <div class="splash-dots"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app">
+  <div class="camera-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div class="camera-header">
+      <button class="top-btn" id="settingsBtn">⚙️</button>
+      <span class="cam-status" id="camStatus">● 启动中</span>
+      <button class="top-btn" id="switchBtn">🔄</button>
+    </div>
+    <div class="camera-hint" id="hint">对准物品，语音或打字提问</div>
+  </div>
+
+  <div class="chat-area">
+    <div class="chat-header">
+      <span>Vision AI · Gemini 视觉</span>
+      <button class="clear-btn" id="clearBtn">清空</button>
+    </div>
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <textarea id="questionInput" rows="1" placeholder="描述你看到的内容..."></textarea>
+      <button class="icon-btn" id="micBtn">🎙️</button>
+      <button class="icon-btn" id="sendBtn">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置页面 -->
+<div id="settingsPage">
+  <div class="settings-sheet">
+    <div class="settings-handle"></div>
+    <div class="settings-title">⚙️ 设置</div>
+
+    <div class="model-tabs">
+      <div class="model-tab active" data-model="gemini-2.5-flash" id="tabGemini">🤖 Gemini 视觉</div>
+      <div class="model-tab" data-model="deepseek-chat" id="tabDeepseek">📝 DeepSeek 文字</div>
+    </div>
+
+    <div class="key-field" id="geminiKeyField">
+      <label>Gemini API Key（视觉 + 对话）</label>
+      <input type="password" id="geminiKeyInput" placeholder="AIza..." />
+    </div>
+
+    <div class="key-field hidden" id="deepseekKeyField">
+      <label>DeepSeek API Key（仅文字对话）</label>
+      <input type="password" id="deepseekKeyInput" placeholder="sk-..." />
+    </div>
+
+    <div class="camera-field">
+      <label>摄像头</label>
+      <select id="cameraSelect">
+        <option value="environment">后置摄像头</option>
+        <option value="user">前置摄像头</option>
+      </select>
+    </div>
+
+    <button class="save-btn" id="saveBtn">保存并连接</button>
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================
+   Vision AI - Cloudflare Pages 版本
+   直接调用 Gemini API，无需后端
+   ============================================ */
+
+// 状态
+let stream = null;
+let facing = 'environment';
+let isRecording = false;
+let isProcessing = false;
+let recognition = null;
+let currentModel = 'gemini-2.5-flash';
+
+// DOM
+const splash       = document.getElementById('splash');
+const app          = document.getElementById('app');
+const video        = document.getElementById('video');
+const canvas       = document.getElementById('canvas');
+const ctx          = canvas.getContext('2d');
+const messages     = document.getElementById('messages');
+const qInput       = document.getElementById('questionInput');
+const micBtn       = document.getElementById('micBtn');
+const sendBtn      = document.getElementById('sendBtn');
+const camStatus    = document.getElementById('camStatus');
+const hint         = document.getElementById('hint');
+const clearBtn     = document.getElementById('clearBtn');
+const settingsBtn   = document.getElementById('settingsBtn');
+const switchBtn    = document.getElementById('switchBtn');
+const settingsPage = document.getElementById('settingsPage');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const geminiKeyInput = document.getElementById('geminiKeyInput');
+const deepseekKeyInput = document.getElementById('deepseekKeyInput');
+const geminiKeyField = document.getElementById('geminiKeyField');
+const deepseekKeyField = document.getElementById('deepseekKeyField');
+const cameraSelect = document.getElementById('cameraSelect');
+const saveBtn      = document.getElementById('saveBtn');
+const statusMsg    = document.getElementById('statusMsg');
+const tabGemini    = document.getElementById('tabGemini');
+const tabDeepseek  = document.getElementById('tabDeepseek');
+
+// ============================================
+// 摄像头
+// ============================================
+async function initCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  camStatus.textContent = '● 启动摄像头...';
+  camStatus.className = 'cam-status';
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+    camStatus.textContent = '🔴 实时';
+    camStatus.className = 'cam-status live';
+  } catch (err) {
+    console.error('摄像头错误', err);
+    camStatus.textContent = '❌ 摄像头无法访问';
+    camStatus.className = 'cam-status error';
+    addMsg('system', '⚠️ 摄像头无法访问，请在设置中允许相机权限');
+  }
+}
+
+// ============================================
+// 截图
+// ============================================
+function captureFrame() {
+  if (!video || !video.videoWidth) return null;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.6).replace(/^data:image\/\w+;base64,/, '');
+}
+
+// ============================================
+// 消息
+// ============================================
+function addMsg(role, text) {
+  const el = document.createElement('div');
+  el.className = 'message ' + role;
+  el.textContent = text;
+  messages.appendChild(el);
+  messages.scrollTop = messages.scrollHeight;
+  return el;
+}
+
+function addThinking() {
+  const el = document.createElement('div');
+  el.className = 'thinking';
+  el.innerHTML = '<span></span><span></span><span></span>';
+  messages.appendChild(el);
+  messages.scrollTop = messages.scrollHeight;
+  return el;
+}
+
+function clearChat() {
+  messages.innerHTML = '';
+}
+
+// ============================================
+// 直接调用 Gemini API
+// ============================================
+async function callGemini(question, imageBase64) {
+  const apiKey = localStorage.getItem('va_gemini_key');
+  if (!apiKey) throw new Error('请先在设置中配置 Gemini API Key');
+
+  const modelName = 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const parts = [{ text: question }];
+  if (imageBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: imageBase64
+      }
+    });
+  }
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts }] })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    const msg = err?.error?.message || `API错误 ${resp.status}`;
+    throw new Error(msg);
+  }
+
+  const data = await resp.json();
+  const answer = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!answer) throw new Error('Gemini 返回为空');
+  return answer;
+}
+
+// 直接调用 DeepSeek API
+async function callDeepSeek(question) {
+  const apiKey = localStorage.getItem('va_deepseek_key');
+  if (!apiKey) throw new Error('请先在设置中配置 DeepSeek API Key');
+
+  const resp = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: question }]
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API错误 ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  return data?.choices?.[0]?.message?.content || '无回复';
+}
+
+// ============================================
+// 发送
+// ============================================
+async function send(question) {
+  if (isProcessing || !question.trim()) return;
+  isProcessing = true;
+  sendBtn.style.opacity = '0.4';
+
+  const q = question.trim();
+  addMsg('user', q);
+  const thinking = addThinking();
+
+  try {
+    let answer;
+    if (currentModel === 'gemini-2.5-flash') {
+      const imageBase64 = captureFrame();
+      answer = await callGemini(q, imageBase64);
+    } else {
+      answer = await callDeepSeek(q);
+    }
+
+    thinking.remove();
+    addMsg('ai', answer);
+  } catch (err) {
+    thinking.remove();
+    addMsg('error', '❌ ' + err.message);
+    if (err.message.includes('Key') || err.message.includes('API')) {
+      setTimeout(openSettings, 1500);
+    }
+  } finally {
+    isProcessing = false;
+    sendBtn.style.opacity = '1';
+    qInput.value = '';
+    qInput.focus();
+  }
+}
+
+// ============================================
+// 语音识别
+// ============================================
+function initSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { micBtn.style.display = 'none'; return; }
+
+  recognition = new SR();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    camStatus.textContent = '🎤 倾听中...';
+    camStatus.className = 'cam-status live';
+  };
+
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript;
+    qInput.value = text;
+    send(text);
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    camStatus.textContent = '🔴 实时';
+    camStatus.className = 'cam-status live';
+  };
+
+  recognition.onerror = (event) => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    if (event.error !== 'no-speech') {
+      camStatus.textContent = '🎤 语音出错';
+      camStatus.className = 'cam-status error';
+    } else {
+      camStatus.textContent = '🔴 实时';
+      camStatus.className = 'cam-status live';
+    }
+  };
+}
+
+// ============================================
+// 设置
+// ============================================
+function openSettings() { settingsPage.classList.add('show'); }
+function closeSettings() { settingsPage.classList.remove('show'); }
+
+async function saveSettings() {
+  const deepseekKey = deepseekKeyInput.value.trim();
+  const geminiKey = geminiKeyInput.value.trim();
+
+  if (currentModel === 'deepseek-chat' && !deepseekKey) {
+    statusMsg.textContent = '⚠️ 请输入 DeepSeek API Key';
+    statusMsg.className = 'status-msg err';
+    return;
+  }
+  if (currentModel === 'gemini-2.5-flash' && !geminiKey) {
+    statusMsg.textContent = '⚠️ 请输入 Gemini API Key';
+    statusMsg.className = 'status-msg err';
+    return;
+  }
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '正在验证...';
+  statusMsg.textContent = '';
+  statusMsg.className = 'status-msg';
+
+  try {
+    // 测试 API Key
+    if (currentModel === 'gemini-2.5-flash') {
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }) }
+      );
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({}));
+        throw new Error(e?.error?.message || 'Key 无效');
+      }
+      localStorage.setItem('va_gemini_key', geminiKey);
+    } else {
+      const resp = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${deepseekKey}` },
+        body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: 'hi' }] })
+      });
+      if (!resp.ok) throw new Error('DeepSeek Key 无效');
+      localStorage.setItem('va_deepseek_key', deepseekKey);
+    }
+
+    localStorage.setItem('va_model', currentModel);
+    localStorage.setItem('va_camera', facing);
+    cameraSelect.value = facing;
+
+    statusMsg.textContent = '✅ ' + (currentModel === 'gemini-2.5-flash' ? 'Gemini' : 'DeepSeek') + ' 连接成功！';
+    statusMsg.className = 'status-msg ok';
+    saveBtn.textContent = '✅ 已保存';
+
+    setTimeout(() => { closeSettings(); initCamera(); saveBtn.disabled = false; saveBtn.textContent = '保存并连接'; }, 1200);
+  } catch (err) {
+    statusMsg.textContent = '❌ ' + err.message;
+    statusMsg.className = 'status-msg err';
+    saveBtn.disabled = false;
+    saveBtn.textContent = '保存并连接';
+  }
+}
+
+// ============================================
+// 初始化
+// ============================================
+async function init() {
+  setTimeout(() => {
+    splash.classList.add('fade-out');
+    setTimeout(() => { splash.style.display = 'none'; app.classList.add('active'); }, 600);
+  }, 1800);
+
+  // 模型标签切换
+  function applyModelTabs(model) {
+    if (model === 'gemini-2.5-flash') {
+      tabGemini.classList.add('active');
+      tabDeepseek.classList.remove('active');
+      deepseekKeyField.classList.add('hidden');
+      geminiKeyField.classList.remove('hidden');
+    } else {
+      tabGemini.classList.remove('active');
+      tabDeepseek.classList.add('active');
+      deepseekKeyField.classList.remove('hidden');
+      geminiKeyField.classList.add('hidden');
+    }
+    currentModel = model;
+  }
+
+  tabGemini.addEventListener('click', () => applyModelTabs('gemini-2.5-flash'));
+  tabDeepseek.addEventListener('click', () => applyModelTabs('deepseek-chat'));
+
+  // 加载已保存的设置
+  const savedModel = localStorage.getItem('va_model') || 'gemini-2.5-flash';
+  const savedGeminiKey = localStorage.getItem('va_gemini_key');
+  const savedDeepseekKey = localStorage.getItem('va_deepseek_key');
+  const savedCamera = localStorage.getItem('va_camera');
+
+  applyModelTabs(savedModel);
+  if (savedGeminiKey) geminiKeyInput.value = savedGeminiKey;
+  if (savedDeepseekKey) deepseekKeyInput.value = savedDeepseekKey;
+  if (savedCamera) { facing = savedCamera; cameraSelect.value = savedCamera; }
+
+  if (!savedGeminiKey && !savedDeepseekKey) {
+    addMsg('system', '⚠️ 首次使用请先配置 API Key');
+    setTimeout(openSettings, 2200);
+  } else {
+    const modelName = savedModel === 'gemini-2.5-flash' ? 'Gemini' : 'DeepSeek';
+    addMsg('system', '✅ 已配置 ' + modelName + '，可直接使用');
+  }
+
+  initSpeech();
+  await initCamera();
+
+  settingsBtn.addEventListener('click', openSettings);
+  saveBtn.addEventListener('click', saveSettings);
+
+  switchBtn.addEventListener('click', async () => {
+    facing = facing === 'environment' ? 'user' : 'environment';
+    localStorage.setItem('va_camera', facing);
+    cameraSelect.value = facing;
+    await initCamera();
+  });
+
+  clearBtn.addEventListener('click', clearChat);
+  sendBtn.addEventListener('click', () => send(qInput.value));
+  qInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(qInput.value); }
+  });
+
+  micBtn.addEventListener('click', () => {
+    if (recognition && !isRecording) { try { recognition.start(); } catch (e) {} }
+  });
+
+  let pressTimer;
+  micBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    pressTimer = setTimeout(() => { if (recognition) { try { recognition.start(); } catch (err) {} } }, 250);
+  });
+  micBtn.addEventListener('touchend', () => {
+    clearTimeout(pressTimer);
+    if (isRecording && recognition) recognition.stop();
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
