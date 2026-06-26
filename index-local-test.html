@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>本地模型测试 v2</title>
+  <title>本地模型测试 v3</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, system-ui, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
@@ -23,7 +23,6 @@
     .status { margin-top: 20px; text-align: center; font-size: 15px; color: #888; min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
     .status.error { color: #ff6b6b; }
     .status.success { color: #34C759; }
-    .status.loading { }
     .dots { display: flex; gap: 6px; }
     .dots span { width: 8px; height: 8px; background: #007AFF; border-radius: 50%; animation: pulse 1.2s infinite ease-in-out; }
     .dots span:nth-child(2) { animation-delay: 0.2s; }
@@ -34,12 +33,13 @@
     .cam-wrap { width: 100%; margin-top: 16px; display: none; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; }
     .cam-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
     .answer { display: none; margin-top: 12px; padding: 14px; background: #111; border-radius: 10px; font-size: 15px; line-height: 1.6; color: #ddd; white-space: pre-wrap; }
+    .log { margin-top: 16px; padding: 12px; background: #111; border-radius: 10px; font-size: 12px; color: #666; font-family: monospace; max-height: 120px; overflow-y: auto; text-align: left; white-space: pre-wrap; display: none; }
   </style>
 </head>
 <body>
 
-<h1>🤖 本地模型测试 v2</h1>
-<p class="subtitle">iPhone 16 Pro · iOS 26</p>
+<h1>🤖 本地模型测试 v3</h1>
+<p class="subtitle">iPhone 16 Pro · iOS 26 · Transformers.js</p>
 
 <div class="card">
   <div class="item">
@@ -47,16 +47,16 @@
     <span class="val loading" id="gpu">检测中...</span>
   </div>
   <div class="item">
-    <span class="label">WebLLM</span>
-    <span class="val loading" id="llm">检测中...</span>
+    <span class="label">Transformers.js</span>
+    <span class="val loading" id="tfjs">检测中...</span>
   </div>
   <div class="item">
     <span class="label">摄像头</span>
     <span class="val loading" id="cam">检测中...</span>
   </div>
   <div class="item">
-    <span class="label">本地模型</span>
-    <span class="val" id="model">—</span>
+    <span class="label">模型</span>
+    <span class="val" id="model">moondream2-quantized</span>
   </div>
   <div class="progress-wrap" id="progressWrap" style="display:none">
     <div class="progress-bar"><div class="progress-fill" id="progressBar"></div></div>
@@ -68,6 +68,8 @@
   <span id="statusText">正在初始化...</span>
 </div>
 
+<div class="log" id="log"></div>
+
 <div class="cam-wrap" id="camWrap">
   <video id="video" autoplay playsinline muted></video>
 </div>
@@ -75,8 +77,14 @@
 <div class="answer" id="answer"></div>
 
 <script>
-// ── Step 1: Detect WebGPU ──────────────────────────────────────
 const $ = id => document.getElementById(id);
+
+function log(msg) {
+  const el = $('log');
+  el.style.display = 'block';
+  el.textContent += new Date().toLocaleTimeString() + ' ' + msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
 
 function set(id, text, cls) {
   const el = $(id);
@@ -85,153 +93,163 @@ function set(id, text, cls) {
 }
 
 function setStatus(text, type) {
-  const s = $('status');
   const t = $('statusText');
+  const s = $('status');
   t.textContent = text;
-  s.className = 'status ' + (type || 'loading');
   if (type === 'success') {
-    s.innerHTML = '<span>✅ ' + text + '</span>';
+    s.className = 'status success';
+    s.innerHTML = '<span>✅</span><span>' + text + '</span>';
   } else if (type === 'error') {
-    s.innerHTML = '<span>❌ ' + text + '</span>';
+    s.className = 'status error';
+    s.innerHTML = '<span>❌</span><span>' + text + '</span>';
   } else {
+    s.className = 'status loading';
     s.innerHTML = '<div class="dots"><span></span><span></span><span></span></div><span>' + text + '</span>';
   }
 }
 
+log('=== 本地模型测试 v3 ===');
+log('开始检测环境...');
+
 // Check WebGPU
 const gpuOk = !!navigator.gpu;
 set('gpu', gpuOk ? '✅ 支持' : '❌ 不支持', gpuOk ? 'ok' : 'fail');
+log('WebGPU: ' + (gpuOk ? 'OK' : 'FAIL'));
 
 // Check camera
 navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-  .then(s => { s.getTracks().forEach(t => t.stop()); set('cam', '✅ 可用', 'ok'); })
-  .catch(() => { set('cam', '❌ 不可用', 'fail'); });
+  .then(s => { s.getTracks().forEach(t => t.stop()); set('cam', '✅ 可用', 'ok'); log('Camera: OK'); })
+  .catch(e => { set('cam', '❌ 不可用', 'fail'); log('Camera: FAIL - ' + e.message); });
 
-// ── Step 2: Load WebLLM ────────────────────────────────────────
-async function loadWebLLM() {
+// Load Transformers.js from multiple CDN sources
+async function loadTransformers() {
   if (!gpuOk) {
-    set('llm', '❌ WebGPU 不可用', 'fail');
-    setStatus('当前浏览器不支持 WebGPU，无法运行本地模型', 'error');
+    set('tfjs', '❌ WebGPU 不可用', 'fail');
+    setStatus('WebGPU 不支持，无法运行', 'error');
     return;
   }
 
-  set('llm', '加载中...', 'loading');
-  setStatus('正在加载 WebLLM...');
+  set('tfjs', '加载中...', 'loading');
+  setStatus('正在加载 Transformers.js...');
+  log('尝试加载 Transformers.js...');
 
   // Try multiple CDN sources
-  const sources = [
-    { url: 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.11/+esm', name: 'jsDelivr' },
-    { url: 'https://unpkg.com/@mlc-ai/web-llm@0.2.11/+esm', name: 'unpkg' },
-    { url: 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/+esm', name: 'jsDelivr latest' }
+  const cdnList = [
+    { url: 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1', name: 'jsDelivr' },
+    { url: 'https://unpkg.com/@xenova/transformers@2.17.1', name: 'unpkg' },
+    { url: 'https://registry.npmmirror.com/@xenova/transformers@2.17.1', name: 'npmmirror' }
   ];
 
-  let webllm = null;
-  let lastError = '';
-  for (const src of sources) {
+  let transformers = null;
+  for (const cdn of cdnList) {
     try {
-      setStatus('尝试: ' + src.name);
-      webllm = await import(src.url);
+      log('尝试 CDN: ' + cdn.name + '...');
+      setStatus('尝试 ' + cdn.name + '...');
+      transformers = await import(cdn.url + '/dist/transformers.js');
+      log('CDN 成功: ' + cdn.name);
       break;
     } catch(e) {
-      lastError = e.message;
+      log('CDN 失败: ' + cdn.name + ' - ' + e.message.slice(0, 60));
     }
   }
 
-  if (!webllm) {
-    set('llm', '❌ CDN 加载失败', 'fail');
-    setStatus('WebLLM 库加载失败 (CDN 不可访问)', 'error');
+  if (!transformers) {
+    set('tfjs', '❌ CDN 全部失败', 'fail');
+    setStatus('所有 CDN 都无法访问（可能是网络问题）', 'error');
     return;
   }
 
-  setStatus('WebLLM 已加载，正在启动模型...');
-  set('llm', '模型加载中...', 'loading');
-
-  // Find correct API
-  const CreateEngine = webllm.CreateMLCEngine || webllm.CreateEngine;
-  const ModelList = webllm.modelList || webllm.model_metadata || [];
-
-  if (!CreateEngine) {
-    const keys = Object.keys(webllm).filter(k => typeof webllm[k] === 'function');
-    set('llm', '❌ API 不匹配', 'fail');
-    setStatus('无可用方法: ' + keys.slice(0,5).join(', '), 'error');
-    return;
-  }
-
-  // Use Qwen2.5-1.5B - good balance of size and quality
-  const modelId = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
-  set('model', modelId, 'loading');
-  setStatus('正在下载模型（约 1GB）...', 'loading');
-  $('progressWrap').style.display = 'block';
-
-  let engine;
-  try {
-    engine = await CreateEngine(modelId, {
-      initProgressCallback: (info) => {
-        const pct = Math.round((info.progress || 0) * 100);
-        $('progressBar').style.width = pct + '%';
-        if (info.text) {
-          setStatus(info.text.replace(/\n/g, ' ').slice(0, 80), 'loading');
-        } else {
-          setStatus('下载中 ' + pct + '%', 'loading');
-        }
-      }
-    });
-  } catch(e) {
-    set('llm', '❌ 模型加载失败', 'fail');
-    $('progressWrap').style.display = 'none';
-    setStatus('模型加载失败: ' + e.message.slice(0, 100), 'error');
-    return;
-  }
-
-  // Success!
-  set('llm', '✅ 就绪', 'ok');
-  $('progressBar').style.width = '100%';
-  setStatus('🎉 本地模型加载成功！完全离线可用！', 'success');
-  $('progressWrap').style.display = 'none';
-
-  // Show camera and chat
-  $('camWrap').style.display = 'block';
-  $('askBtn').style.display = 'block';
-
-  // Start camera
-  const video = $('video');
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
-  });
-  video.srcObject = stream;
-
-  // Chat button
-  $('askBtn').onclick = async () => {
-    const answer = $('answer');
-    answer.style.display = 'block';
-    answer.textContent = '🤖 推理中（请稍候 3~8 秒）...';
-    $('askBtn').disabled = true;
-
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      const imgData = canvas.toDataURL('image/jpeg', 0.7);
-
-      const reply = await engine.chat.completions.create({
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: '请简单描述这张图片' },
-            { type: 'image_url', image_url: { url: imgData } }
-          ]
-        }]
-      });
-      answer.textContent = reply.choices[0].message.content;
-    } catch(e2) {
-      answer.textContent = '❌ 推理失败: ' + e2.message;
-    }
-    $('askBtn').disabled = false;
-  };
+  set('tfjs', '✅ 已加载', 'ok');
+  log('Transformers.js 加载成功！');
+  await runMoondream(transformers);
 }
 
-loadWebLLM();
+async function runMoondream(tf) {
+  const { pipeline, env } = tf;
+  setStatus('正在加载模型（约 500MB）...', 'loading');
+  log('开始下载 Moondream2 模型...');
+
+  // Use HuggingFace CDN mirror
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+
+  $('progressWrap').style.display = 'block';
+  let lastPct = 0;
+
+  try {
+    const captioner = await pipeline(
+      'image-to-text',
+      'Xenova/moondream2',
+      {
+        progress_callback: (info) => {
+          if (info.status === 'progress' && info.progress !== undefined) {
+            const pct = Math.round(info.progress);
+            if (pct !== lastPct) {
+              lastPct = pct;
+              $('progressBar').style.width = pct + '%';
+              setStatus('下载中 ' + pct + '%', 'loading');
+              if (info.file) log('下载: ' + info.file);
+            }
+          } else if (info.status) {
+            log(info.status + (info.file ? ' - ' + info.file : ''));
+          }
+        }
+      }
+    );
+
+    set('tfjs', '✅ 模型就绪', 'ok');
+    $('progressBar').style.width = '100%';
+    setStatus('🎉 模型加载成功！可以离线使用！', 'success');
+    log('模型加载完成！');
+
+    $('camWrap').style.display = 'block';
+    $('askBtn').style.display = 'block';
+
+    const video = $('video');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    video.srcObject = stream;
+    log('摄像头已启动');
+
+    $('askBtn').onclick = async () => {
+      const answer = $('answer');
+      answer.style.display = 'block';
+      answer.textContent = '🤖 推理中...';
+      $('askBtn').disabled = true;
+      log('开始推理...');
+
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+
+        // Convert base64 to blob for transformers
+        const response = await fetch(imgData);
+        const blob = await response.blob();
+
+        log('图片已捕获，开始分析...');
+        const result = await captioner(blob, { prompt: '请简单描述这张图片，用中文回答' });
+        answer.textContent = result[0].generated_text;
+        log('推理完成: ' + result[0].generated_text.slice(0, 50));
+      } catch(e2) {
+        answer.textContent = '❌ 推理失败: ' + e2.message;
+        log('推理错误: ' + e2.message);
+      }
+      $('askBtn').disabled = false;
+    };
+
+  } catch(e) {
+    set('tfjs', '❌ 模型加载失败', 'fail');
+    $('progressWrap').style.display = 'none';
+    setStatus('模型加载失败: ' + e.message.slice(0, 80), 'error');
+    log('ERROR: ' + e.message);
+  }
+}
+
+loadTransformers();
 </script>
 </body>
 </html>
