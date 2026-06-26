@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>本地模型测试</title>
+  <title>本地模型测试 v2</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, system-ui, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-    h1 { font-size: 28px; margin-bottom: 8px; color: #fff; }
-    .subtitle { color: #666; font-size: 14px; margin-bottom: 30px; }
+    h1 { font-size: 28px; margin-bottom: 6px; }
+    .subtitle { color: #666; font-size: 14px; margin-bottom: 24px; }
     .card { background: #1a1a1a; border-radius: 16px; padding: 24px; width: 100%; max-width: 420px; }
     .item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #2a2a2a; font-size: 15px; }
     .item:last-child { border-bottom: none; }
@@ -16,223 +16,222 @@
     .item .val { font-weight: 600; color: #fff; }
     .item .val.ok { color: #34C759; }
     .item .val.fail { color: #ff3b30; }
-    .item .val.testing { color: #FF9500; }
-    .progress-bar { width: 100%; height: 6px; background: #2a2a2a; border-radius: 3px; margin-top: 8px; overflow: hidden; }
-    .progress-fill { height: 100%; background: #007AFF; border-radius: 3px; width: 0%; transition: width 0.3s; }
-    .status { margin-top: 24px; text-align: center; font-size: 15px; color: #888; min-height: 50px; }
+    .item .val.loading { color: #FF9500; }
+    .progress-wrap { margin-top: 8px; }
+    .progress-bar { width: 100%; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #007AFF; border-radius: 3px; width: 0%; transition: width 0.5s; }
+    .status { margin-top: 20px; text-align: center; font-size: 15px; color: #888; min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
     .status.error { color: #ff6b6b; }
     .status.success { color: #34C759; }
-    .btn { display: block; width: 100%; margin-top: 16px; padding: 16px; background: #007AFF; color: #fff; border: none; border-radius: 12px; font-size: 17px; font-weight: 600; cursor: pointer; }
+    .status.loading { }
+    .dots { display: flex; gap: 6px; }
+    .dots span { width: 8px; height: 8px; background: #007AFF; border-radius: 50%; animation: pulse 1.2s infinite ease-in-out; }
+    .dots span:nth-child(2) { animation-delay: 0.2s; }
+    .dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pulse { 0%,100%{opacity:0.4;transform:scale(0.8)}50%{opacity:1;transform:scale(1)} }
+    .btn { display: none; width: 100%; margin-top: 16px; padding: 16px; background: #007AFF; color: #fff; border: none; border-radius: 12px; font-size: 17px; font-weight: 600; cursor: pointer; }
     .btn:active { opacity: 0.7; }
-    .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
-    .cam-preview { width: 100%; border-radius: 12px; margin-top: 16px; display: none; background: #000; }
-    .cam-preview video { width: 100%; border-radius: 12px; }
-    .answer { margin-top: 12px; padding: 14px; background: #111; border-radius: 10px; font-size: 15px; line-height: 1.6; color: #ddd; display: none; white-space: pre-wrap; }
+    .cam-wrap { width: 100%; margin-top: 16px; display: none; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 4/3; }
+    .cam-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .answer { display: none; margin-top: 12px; padding: 14px; background: #111; border-radius: 10px; font-size: 15px; line-height: 1.6; color: #ddd; white-space: pre-wrap; }
   </style>
 </head>
 <body>
 
-<h1>🤖 本地模型测试</h1>
+<h1>🤖 本地模型测试 v2</h1>
 <p class="subtitle">iPhone 16 Pro · iOS 26</p>
 
 <div class="card">
   <div class="item">
-    <span class="label">WebGPU 支持</span>
-    <span class="val" id="webgpu">检测中...</span>
+    <span class="label">WebGPU</span>
+    <span class="val loading" id="gpu">检测中...</span>
   </div>
   <div class="item">
-    <span class="label">WebLLM 引擎</span>
-    <span class="val" id="webllm">检测中...</span>
+    <span class="label">WebLLM</span>
+    <span class="val loading" id="llm">检测中...</span>
+  </div>
+  <div class="item">
+    <span class="label">摄像头</span>
+    <span class="val loading" id="cam">检测中...</span>
   </div>
   <div class="item">
     <span class="label">本地模型</span>
     <span class="val" id="model">—</span>
   </div>
-  <div class="item">
-    <span class="label">下载进度</span>
-    <span class="val" id="progress">—</span>
-  </div>
-  <div class="progress-bar"><div class="progress-fill" id="progressBar"></div></div>
-
-  <div class="item">
-    <span class="label">摄像头</span>
-    <span class="val" id="camera">检测中...</span>
+  <div class="progress-wrap" id="progressWrap" style="display:none">
+    <div class="progress-bar"><div class="progress-fill" id="progressBar"></div></div>
   </div>
 </div>
 
-<div class="status" id="status">正在初始化检测...</div>
-
-<div class="card" style="margin-top: 16px; display: none;" id="chatCard">
-  <div class="cam-preview" id="camPreview">
-    <video id="video" autoplay playsinline muted></video>
-  </div>
-  <button class="btn" id="askBtn" disabled>📷 拍照提问</button>
-  <div class="answer" id="answer"></div>
+<div class="status loading" id="status">
+  <div class="dots"><span></span><span></span><span></span></div>
+  <span id="statusText">正在初始化...</span>
 </div>
 
-<script type="module">
-// Try loading webllm from CDN
-let webllm = null;
-try {
-  webllm = await import('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.11/+esm');
-} catch(e) {
-  try {
-    webllm = await import('https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@latest/+esm');
-  } catch(e2) {
-    $('webllm').textContent = '❌ 加载失败';
-    $('webllm').className = 'val fail';
-    $('status').textContent = '⚠️ WebLLM 库无法加载：' + e2.message;
-    return;
-  }
-}
+<div class="cam-wrap" id="camWrap">
+  <video id="video" autoplay playsinline muted></video>
+</div>
+<button class="btn" id="askBtn">📷 拍照提问</button>
+<div class="answer" id="answer"></div>
 
+<script>
+// ── Step 1: Detect WebGPU ──────────────────────────────────────
 const $ = id => document.getElementById(id);
 
-let engine = null;
+function set(id, text, cls) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = 'val ' + (cls || '');
+}
 
-// Step 1: Check WebGPU
-async function checkWebGPU() {
-  if (navigator.gpu) {
-    $('webgpu').textContent = '✅ 支持';
-    $('webgpu').className = 'val ok';
-    return true;
+function setStatus(text, type) {
+  const s = $('status');
+  const t = $('statusText');
+  t.textContent = text;
+  s.className = 'status ' + (type || 'loading');
+  if (type === 'success') {
+    s.innerHTML = '<span>✅ ' + text + '</span>';
+  } else if (type === 'error') {
+    s.innerHTML = '<span>❌ ' + text + '</span>';
   } else {
-    $('webgpu').textContent = '❌ 不支持';
-    $('webgpu').className = 'val fail';
-    return false;
+    s.innerHTML = '<div class="dots"><span></span><span></span><span></span></div><span>' + text + '</span>';
   }
 }
 
-// Step 2: Check camera
-async function checkCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    stream.getTracks().forEach(t => t.stop());
-    $('camera').textContent = '✅ 可用';
-    $('camera').className = 'val ok';
-    return true;
-  } catch(e) {
-    $('camera').textContent = '❌ 不可用';
-    $('camera').className = 'val fail';
-    return false;
+// Check WebGPU
+const gpuOk = !!navigator.gpu;
+set('gpu', gpuOk ? '✅ 支持' : '❌ 不支持', gpuOk ? 'ok' : 'fail');
+
+// Check camera
+navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  .then(s => { s.getTracks().forEach(t => t.stop()); set('cam', '✅ 可用', 'ok'); })
+  .catch(() => { set('cam', '❌ 不可用', 'fail'); });
+
+// ── Step 2: Load WebLLM ────────────────────────────────────────
+async function loadWebLLM() {
+  if (!gpuOk) {
+    set('llm', '❌ WebGPU 不可用', 'fail');
+    setStatus('当前浏览器不支持 WebGPU，无法运行本地模型', 'error');
+    return;
   }
-}
 
-// Step 3: Try loading WebLLM
-async function tryWebLLM() {
-  $('status').textContent = '⏳ 正在加载 WebLLM 引擎...';
-  $('webllm').textContent = '加载中...';
-  $('webllm').className = 'val testing';
+  set('llm', '加载中...', 'loading');
+  setStatus('正在加载 WebLLM...');
 
-  // Try the correct API - CreateMLCEngine is the current API
-  const createFn = webllm.CreateMLCEngine || webllm.CreateEngine;
-  if (!createFn) {
+  // Try multiple CDN sources
+  const sources = [
+    { url: 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.11/+esm', name: 'jsDelivr' },
+    { url: 'https://unpkg.com/@mlc-ai/web-llm@0.2.11/+esm', name: 'unpkg' },
+    { url: 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/+esm', name: 'jsDelivr latest' }
+  ];
+
+  let webllm = null;
+  let lastError = '';
+  for (const src of sources) {
+    try {
+      setStatus('尝试: ' + src.name);
+      webllm = await import(src.url);
+      break;
+    } catch(e) {
+      lastError = e.message;
+    }
+  }
+
+  if (!webllm) {
+    set('llm', '❌ CDN 加载失败', 'fail');
+    setStatus('WebLLM 库加载失败 (CDN 不可访问)', 'error');
+    return;
+  }
+
+  setStatus('WebLLM 已加载，正在启动模型...');
+  set('llm', '模型加载中...', 'loading');
+
+  // Find correct API
+  const CreateEngine = webllm.CreateMLCEngine || webllm.CreateEngine;
+  const ModelList = webllm.modelList || webllm.model_metadata || [];
+
+  if (!CreateEngine) {
     const keys = Object.keys(webllm).filter(k => typeof webllm[k] === 'function');
-    $('webllm').textContent = '❌ API 不匹配';
-    $('webllm').className = 'val fail';
-    $('status').textContent = '⚠️ 可用方法：' + keys.join(', ');
-    return false;
+    set('llm', '❌ API 不匹配', 'fail');
+    setStatus('无可用方法: ' + keys.slice(0,5).join(', '), 'error');
+    return;
   }
 
-  // Use a small model that iPhone can handle - Qwen2.5-1.5B is good balance
-  const testModel = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+  // Use Qwen2.5-1.5B - good balance of size and quality
+  const modelId = 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+  set('model', modelId, 'loading');
+  setStatus('正在下载模型（约 1GB）...', 'loading');
+  $('progressWrap').style.display = 'block';
 
+  let engine;
   try {
-    $('status').textContent = '🚀 准备下载模型（首次需下载约400MB）...';
-    $('model').textContent = testModel;
-    $('model').className = 'val testing';
-
-    engine = await createFn(testModel, {
-      initProgressCallback: (progress) => {
-        const pct = Math.round(progress.progress * 100);
-        $('progress').textContent = pct + '%';
+    engine = await CreateEngine(modelId, {
+      initProgressCallback: (info) => {
+        const pct = Math.round((info.progress || 0) * 100);
         $('progressBar').style.width = pct + '%';
-        const loaded = (progress.progress * 1.0).toFixed(1);
-        $('status').textContent = `📥 下载模型中... ${loaded} / 1.0 GB`;
+        if (info.text) {
+          setStatus(info.text.replace(/\n/g, ' ').slice(0, 80), 'loading');
+        } else {
+          setStatus('下载中 ' + pct + '%', 'loading');
+        }
       }
     });
-
-    $('webllm').textContent = '✅ 就绪';
-    $('webllm').className = 'val ok';
-    $('progress').textContent = '100%';
-    $('progressBar').style.width = '100%';
-    $('status').textContent = '🎉 本地模型加载成功！可以离线使用！';
-    $('status').className = 'status success';
-    $('chatCard').style.display = 'block';
-
-    await setupChat(engine);
-    return true;
   } catch(e) {
-    $('webllm').textContent = '❌ 失败';
-    $('webllm').className = 'val fail';
-    $('model').textContent = '—';
-    $('progress').textContent = '—';
-    $('progressBar').style.width = '0%';
-    $('status').textContent = '⚠️ ' + e.message;
-    $('status').className = 'status error';
-    return false;
+    set('llm', '❌ 模型加载失败', 'fail');
+    $('progressWrap').style.display = 'none';
+    setStatus('模型加载失败: ' + e.message.slice(0, 100), 'error');
+    return;
   }
-}
 
-let videoStream = null;
+  // Success!
+  set('llm', '✅ 就绪', 'ok');
+  $('progressBar').style.width = '100%';
+  setStatus('🎉 本地模型加载成功！完全离线可用！', 'success');
+  $('progressWrap').style.display = 'none';
 
-async function setupChat(eng) {
+  // Show camera and chat
+  $('camWrap').style.display = 'block';
+  $('askBtn').style.display = 'block';
+
+  // Start camera
   const video = $('video');
-  const camPreview = $('camPreview');
-  const askBtn = $('askBtn');
-  const answer = $('answer');
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+  });
+  video.srcObject = stream;
 
-  try {
-    videoStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
-    });
-    video.srcObject = videoStream;
-    camPreview.style.display = 'block';
-  } catch(e) {
-    answer.textContent = '⚠️ 摄像头启动失败：' + e.message;
+  // Chat button
+  $('askBtn').onclick = async () => {
+    const answer = $('answer');
     answer.style.display = 'block';
-  }
-
-  askBtn.disabled = false;
-  askBtn.onclick = async () => {
-    // Capture frame
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
-
-    answer.style.display = 'block';
-    answer.textContent = '🤖 推理中...';
+    answer.textContent = '🤖 推理中（请稍候 3~8 秒）...';
+    $('askBtn').disabled = true;
 
     try {
-      const reply = await eng.chat.completions.create({
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      const imgData = canvas.toDataURL('image/jpeg', 0.7);
+
+      const reply = await engine.chat.completions.create({
         messages: [{
           role: 'user',
           content: [
-            { type: 'text', text: '请描述这张图片' },
-            { type: 'image_url', image_url: { url: imageData } }
+            { type: 'text', text: '请简单描述这张图片' },
+            { type: 'image_url', image_url: { url: imgData } }
           ]
         }]
       });
       answer.textContent = reply.choices[0].message.content;
     } catch(e2) {
-      answer.textContent = '❌ 推理失败：' + e2.message;
+      answer.textContent = '❌ 推理失败: ' + e2.message;
     }
+    $('askBtn').disabled = false;
   };
 }
 
-// Run all checks
-$('status').textContent = '⏳ 正在检测系统环境...';
-
-const gpuOk = await checkWebGPU();
-await checkCamera();
-const llmOk = await tryWebLLM();
-
-if (!gpuOk) {
-  $('status').textContent = '❌ 当前浏览器不支持 WebGPU，本地模型无法运行';
-  $('status').className = 'status error';
-}
+loadWebLLM();
 </script>
 </body>
 </html>
